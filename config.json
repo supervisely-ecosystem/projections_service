@@ -4,7 +4,7 @@
   "name": "Projections service",
   "description": "Create 2D projections",
   "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
-  "docker_image": "supervisely/procetions-service:1.0.0",
+  "docker_image": "supervisely/projections-service:1.0.0",
   "port": 8000,
   "categories": [
     "images",
