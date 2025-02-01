@@ -24,7 +24,7 @@ class ProjectionMethod:
 @timeit
 def calculate_projections(
     embeddings, projection_method, dimensions=2, metric="euclidean", umap_min_dist=0.05
-) -> List[List[float]]:
+) -> np.ndarray:
     try:
         if projection_method == ProjectionMethod.PCA:
             decomp = sklearn.decomposition.PCA(n_components=dimensions)
@@ -57,7 +57,22 @@ def calculate_projections(
     return projections
 
 
-@server.post("/create_projections")
+def create_clusters(embeddings: np.ndarray, dbscan_eps: float = 0.5, dbscan_min_samples: int = 5) -> List[int]:
+    """
+    returns a list of cluster labels for each embedding. -1 means no cluster
+    """
+    try:
+        clusterer = sklearn.cluster.DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples, metric="euclidean")
+        labels = clusterer.fit_predict(embeddings)
+
+    except Exception as e:
+        logger.error(f"Error creating clusters with DBSCAN: {str(e)}", exc_info=True)
+        raise
+
+    return labels.tolist()
+
+
+@server.post("/projections")
 async def create_projections_endpoint(request: Request):
     state = request.state.state
     vectors = state["vectors"]
@@ -66,3 +81,11 @@ async def create_projections_endpoint(request: Request):
     vectors = np.array(vectors)
     projections = calculate_projections(vectors, method, dimensions)
     return projections.tolist()
+
+
+@server.post("/clusters")
+async def create_clusters_endpoint(request: Request):
+    state = request.state.state
+    vectors = state["vectors"]
+    vectors = np.array(vectors)
+    return create_clusters(vectors)
