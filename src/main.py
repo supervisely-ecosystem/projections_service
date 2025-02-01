@@ -2,6 +2,7 @@ from typing import List
 
 import numpy as np
 import sklearn.decomposition
+from sklearn.cluster import DBSCAN
 from supervisely import Application, logger
 import umap
 from fastapi import Request
@@ -62,7 +63,7 @@ def create_clusters(embeddings: np.ndarray, dbscan_eps: float = 0.5, dbscan_min_
     returns a list of cluster labels for each embedding. -1 means no cluster
     """
     try:
-        clusterer = sklearn.cluster.DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples, metric="euclidean")
+        clusterer = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples, metric="euclidean")
         labels = clusterer.fit_predict(embeddings)
 
     except Exception as e:
