@@ -86,6 +86,13 @@ async def create_projections_endpoint(request: Request):
 @server.post("/clusters")
 async def create_clusters_endpoint(request: Request):
     state = request.state.state
+    dbscan_eps = state.get("dbscan_eps", 0.5)
+    dbscan_min_samples = state.get("dbscan_min_samples", 5)
+    reduce = state.get("reduce", False)
+    method = state.get("reduction_method", ProjectionMethod.PCA_UMAP)
+    dimensions = state.get("reduction_dimensions", 10)
     vectors = state["vectors"]
     vectors = np.array(vectors)
-    return create_clusters(vectors)
+    if reduce:
+        vectors = calculate_projections(vectors, method, dimensions)
+    return create_clusters(vectors, dbscan_eps, dbscan_min_samples)
