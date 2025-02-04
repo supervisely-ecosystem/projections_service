@@ -126,7 +126,7 @@ def create_samples(
             if len(indexes) == 0:
                 continue
             if method == SamplingMethod.RANDOM:
-                i = indexes.pop(random.choice(len(indexes)))
+                i = indexes.pop(random.randint(0, len(indexes) - 1))
             elif method == SamplingMethod.CENTROIDS:
                 i = indexes.pop()
             else:
