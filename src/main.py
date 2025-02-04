@@ -172,10 +172,14 @@ async def diverse_endpoint(request: Request):
     reduction_method = settings.get("reduction_method", ReductionMethod.UMAP)
     reduction_dimensions = settings.get("reduction_dimensions", 20)
     clustering_method = settings.get("clustring_methood", ClusteringMethod.DBSCAN)
+    labels = state.get("labels")
     vectors = state["vectors"]
     vectors = np.array(vectors)
-    if reduce:
-        vectors = reduce_dimensions(vectors, reduction_method, reduction_dimensions, settings)
-    labels = create_clusters(vectors, clustering_method, settings)
+    if labels:
+        labels = np.array(labels)
+    else:
+        if reduce:
+            vectors = reduce_dimensions(vectors, reduction_method, reduction_dimensions, settings)
+        labels = create_clusters(vectors, clustering_method, settings)
     samples = create_samples(labels, vectors, sample_size, method, settings)
     return samples
