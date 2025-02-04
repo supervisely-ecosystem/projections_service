@@ -42,27 +42,64 @@ def reduce_dimensions(
     metric = settings.get("metric", "euclidean")
     try:
         if projection_method == ReductionMethod.PCA:
+            logger.debug(
+                "Reducing dimensions with PCA", extra={"n_components": dimensions, "vectors_shape": vectors.shape}
+            )
             decomp = sklearn.decomposition.PCA(n_components=dimensions)
             projections = decomp.fit_transform(vectors)
         elif projection_method == ReductionMethod.UMAP:
+            logger.debug(
+                "Reducing dimensions with UMAP",
+                extra={
+                    "n_components": dimensions,
+                    "min_dist": umap_min_dist,
+                    "metric": metric,
+                    "vectors_shape": vectors.shape,
+                },
+            )
             decomp = umap.UMAP(n_components=dimensions, min_dist=umap_min_dist, metric=metric)
             projections = decomp.fit_transform(vectors)
         elif projection_method == ReductionMethod.PCA_UMAP:
+            logger.debug(
+                "Reducing dimensions with PCA and UMAP",
+                extra={
+                    "n_components": dimensions,
+                    "min_dist": umap_min_dist,
+                    "metric": metric,
+                    "vectors_shape": vectors.shape,
+                },
+            )
             decomp = sklearn.decomposition.PCA(64)
             projections = decomp.fit_transform(vectors)
             decomp = umap.UMAP(n_components=dimensions, min_dist=umap_min_dist, metric=metric)
             projections = decomp.fit_transform(projections)
         elif projection_method == ReductionMethod.TSNE:
-            decomp = sklearn.manifold.TSNE(
-                n_components=dimensions, perplexity=min(30, len(vectors) - 1), metric=metric, n_jobs=-1
+            perplexity = min(30, len(vectors) - 1)
+            logger.debug(
+                "Reducing dimensions with t-SNE",
+                extra={
+                    "n_components": dimensions,
+                    "metric": metric,
+                    "perplexity": perplexity,
+                    "vectors_shape": vectors.shape,
+                },
             )
+            decomp = sklearn.manifold.TSNE(n_components=dimensions, perplexity=perplexity, metric=metric, n_jobs=-1)
             projections = decomp.fit_transform(vectors)
         elif projection_method == ReductionMethod.PCA_TSNE:
+            perplexity = min(30, len(vectors) - 1)
+            logger.debug(
+                "Reducing dimensions with PCA and t-SNE",
+                extra={
+                    "n_components": dimensions,
+                    "metric": metric,
+                    "perplexity": perplexity,
+                    "vectors_shape": vectors.shape,
+                },
+            )
             decomp = sklearn.decomposition.PCA(64)
             projections = decomp.fit_transform(vectors)
-            decomp = sklearn.manifold.TSNE(
-                n_components=dimensions, perplexity=min(30, len(vectors) - 1), metric=metric, n_jobs=-1
-            )
+            decomp = sklearn.manifold.TSNE(n_components=dimensions, perplexity=perplexity, metric=metric, n_jobs=-1)
             projections = decomp.fit_transform(projections)
         else:
             raise ValueError(f"Unexpected reduction method: {projection_method}")
@@ -72,6 +109,7 @@ def reduce_dimensions(
     return projections
 
 
+@timeit
 def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.DBSCAN, settings: Dict = None) -> List[int]:
     """
     returns a list of cluster labels for each embedding. -1 means no cluster
@@ -83,6 +121,15 @@ def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.DBSCAN, 
     metric = settings.get("metric", "euclidean")
     try:
         if method == ClusteringMethod.DBSCAN:
+            logger.debug(
+                "Creating clusters with DBSCAN",
+                extra={
+                    "eps": dbscan_eps,
+                    "min_samples": dbscan_min_samples,
+                    "metric": metric,
+                    "vectors_shape": vectors.shape,
+                },
+            )
             clusterer = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples, metric=metric)
             labels = clusterer.fit_predict(vectors)
         else:
@@ -95,11 +142,19 @@ def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.DBSCAN, 
     return labels.tolist()
 
 
+@timeit
 def create_samples(
     labels: List[int], vectors: np.ndarray, sample_size: int, method: str = "random", settings: Dict = None
 ) -> List[int]:
+    if len(labels) != len(vectors):
+        raise ValueError("Labels and vectors must have the same length")
+    if len(labels) == 0:
+        raise ValueError("Labels and vectors must not be empty")
     if settings is None:
         settings = {}
+    logger.debug(
+        "Creating diverse samples", extra={"sample_size": sample_size, "method": method, "vectors_shape": vectors.shape}
+    )
     ignore_noise = settings.get("ignore_noise", False)
     label_to_indexes = {}
     for i, label in enumerate(labels):
@@ -132,10 +187,12 @@ def create_samples(
             else:
                 raise ValueError(f"Unexpected sampling method: {method}")
             results.setdefault(label, []).append(i)
+            added += 1
     return results
 
 
 @server.post("/projections")
+@timeit
 async def projections_endpoint(request: Request):
     state = request.state.state
     vectors = state["vectors"]
@@ -143,11 +200,13 @@ async def projections_endpoint(request: Request):
     dimensions = state.get("dimesions", 2)
     settings = state.get("settings", {})
     vectors = np.array(vectors)
+    logger.info("Reducing dimensions with method %s", method)
     projections = reduce_dimensions(vectors, method, dimensions, settings)
     return projections.tolist()
 
 
 @server.post("/clusters")
+@timeit
 async def clusters_endpoint(request: Request):
     state = request.state.state
     method = state.get("method", ClusteringMethod.DBSCAN)
@@ -157,12 +216,19 @@ async def clusters_endpoint(request: Request):
     reduction_dimensions = settings.get("reduction_dimensions", 20)
     vectors = state["vectors"]
     vectors = np.array(vectors)
+    extra = {
+        "settings": settings,
+        "method": method,
+        "vector_count": len(vectors),
+    }
+    logger.info("Creating clusters with method %s", method, extra=extra)
     if reduce:
         vectors = reduce_dimensions(vectors, reduction_method, reduction_dimensions, settings)
     return create_clusters(vectors, method, settings)
 
 
 @server.post("/diverse")
+@timeit
 async def diverse_endpoint(request: Request):
     state = request.state.state
     method = state.get("method", SamplingMethod.RANDOM)
@@ -175,6 +241,18 @@ async def diverse_endpoint(request: Request):
     labels = state.get("labels")
     vectors = state["vectors"]
     vectors = np.array(vectors)
+    extra = {
+        "settings": settings,
+        "method": method,
+        "sample_size": sample_size,
+        "vector_count": len(vectors),
+    }
+    logger.info(
+        "Diverse sampling with method %s: Sample size: %s",
+        method,
+        sample_size,
+        extra=extra,
+    )
     if labels:
         labels = np.array(labels)
     else:
