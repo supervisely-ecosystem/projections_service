@@ -15,5 +15,5 @@
   "instance_version": "6.12.23",
   "need_gpu": false,
   "community_agent": false,
-  "task_location": "application_sessions",
+  "task_location": "application_sessions"
 }
