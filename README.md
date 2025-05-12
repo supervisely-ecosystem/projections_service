@@ -1,1 +1,1 @@
-# Projections service
+# Projections Service

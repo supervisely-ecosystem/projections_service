@@ -1,19 +1,15 @@
 {
-  "type": "app",
-  "version": "2.0.0",
-  "name": "Projections Service",
-  "description": "Create 2D projections",
-  "entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
-  "headless": true,
-  "docker_image": "supervisely/projections-service:1.0.0",
-  "port": 8000,
-  "categories": [
-    "images",
-    "metric learning",
-    "statistics"
-  ],
-  "instance_version": "6.12.23",
-  "need_gpu": false,
-  "community_agent": false,
-  "task_location": "application_sessions"
+	"type": "app",
+	"version": "2.0.0",
+	"name": "Projections Service",
+	"description": "Create 2D projections",
+	"entrypoint": "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
+	"headless": true,
+	"docker_image": "supervisely/projections-service:1.0.1",
+	"port": 8000,
+	"categories": ["images", "metric learning", "statistics"],
+	"instance_version": "6.12.44",
+	"need_gpu": false,
+	"community_agent": false,
+	"task_location": "application_sessions"
 }

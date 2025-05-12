@@ -3,7 +3,7 @@ from typing import Dict, List
 
 import numpy as np
 import sklearn.decomposition
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import DBSCAN, MiniBatchKMeans
 from supervisely import Application, logger
 import umap
 from fastapi import Request
@@ -25,6 +25,7 @@ class ReductionMethod:
 
 class ClusteringMethod:
     DBSCAN = "dbscan"
+    KMEANS = "kmeans"
 
 
 class SamplingMethod:
@@ -112,13 +113,14 @@ def reduce_dimensions(
 @timeit
 def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.DBSCAN, settings: Dict = None) -> List[int]:
     """
-    returns a list of cluster labels for each embedding. -1 means no cluster
+    Returns a list of cluster labels for each embedding. -1 means no cluster
     """
     if settings is None:
         settings = {}
     dbscan_eps = settings.get("dbscan_eps", 0.5)
     dbscan_min_samples = settings.get("dbscan_min_samples", 5)
     metric = settings.get("metric", "euclidean")
+    num_clusters = settings.get("num_clusters", 8) # for KMeans
     try:
         if method == ClusteringMethod.DBSCAN:
             logger.debug(
@@ -132,6 +134,9 @@ def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.DBSCAN, 
             )
             clusterer = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples, metric=metric)
             labels = clusterer.fit_predict(vectors)
+        elif method == ClusteringMethod.KMEANS:
+            kmeans = MiniBatchKMeans(n_clusters=num_clusters)
+            labels = kmeans.fit_predict(vectors)
         else:
             raise ValueError(f"Unexpected clustering method: {method}")
 
@@ -231,13 +236,13 @@ async def clusters_endpoint(request: Request):
 @timeit
 async def diverse_endpoint(request: Request):
     state = request.state.state
-    method = state.get("method", SamplingMethod.RANDOM)
+    method = state.get("sampling_method", SamplingMethod.RANDOM)
     sample_size = state.get("sample_size")
     settings = state.get("settings", {})
     reduce = settings.get("reduce", False)
     reduction_method = settings.get("reduction_method", ReductionMethod.UMAP)
     reduction_dimensions = settings.get("reduction_dimensions", 20)
-    clustering_method = settings.get("clustring_methood", ClusteringMethod.DBSCAN)
+    clustering_method = settings.get("clustering_method", ClusteringMethod.DBSCAN)
     labels = state.get("labels")
     vectors = state["vectors"]
     vectors = np.array(vectors)
