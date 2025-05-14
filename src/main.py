@@ -135,6 +135,8 @@ def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.DBSCAN, 
             clusterer = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples, metric=metric)
             labels = clusterer.fit_predict(vectors)
         elif method == ClusteringMethod.KMEANS:
+            if len(vectors) < num_clusters:
+                num_clusters = len(vectors)
             kmeans = MiniBatchKMeans(n_clusters=num_clusters)
             labels = kmeans.fit_predict(vectors)
         else:
@@ -241,7 +243,8 @@ async def diverse_endpoint(request: Request):
     settings = state.get("settings", {})
     reduce = settings.get("reduce", False)
     reduction_method = settings.get("reduction_method", ReductionMethod.UMAP)
-    reduction_dimensions = settings.get("reduction_dimensions", 20)
+    default_dimensions = 3 if reduction_method == ReductionMethod.UMAP else 20
+    reduction_dimensions = settings.get("reduction_dimensions", default_dimensions) #! UMAP=3
     clustering_method = settings.get("clustering_method", ClusteringMethod.DBSCAN)
     labels = state.get("labels")
     vectors = state["vectors"]
