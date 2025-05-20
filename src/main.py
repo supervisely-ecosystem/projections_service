@@ -5,12 +5,21 @@ import numpy as np
 import sklearn.decomposition
 from sklearn.cluster import DBSCAN, MiniBatchKMeans
 from supervisely import Application, logger
+import supervisely as sly
 import umap
 from fastapi import Request
 
 from src.utils import timeit
 
+import os
+from dotenv import load_dotenv
 
+if sly.is_development():
+    # for debug
+    load_dotenv(os.path.expanduser("~/supervisely.env"))
+    task_id = sly.app.development.enable_advanced_debug(team_id=1)
+    if task_id:
+        logger.info(f"Debug Task ID: {task_id}")
 app = Application()
 server = app.get_server()
 
@@ -111,7 +120,7 @@ def reduce_dimensions(
 
 
 @timeit
-def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.DBSCAN, settings: Dict = None) -> List[int]:
+def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.KMEANS, settings: Dict = None) -> List[int]:
     """
     Returns a list of cluster labels for each embedding. -1 means no cluster
     """
@@ -120,7 +129,7 @@ def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.DBSCAN, 
     dbscan_eps = settings.get("dbscan_eps", 0.5)
     dbscan_min_samples = settings.get("dbscan_min_samples", 5)
     metric = settings.get("metric", "euclidean")
-    num_clusters = settings.get("num_clusters", 8) # for KMeans
+    num_clusters = settings.get("num_clusters", 8)  # for KMeans
     try:
         if method == ClusteringMethod.DBSCAN:
             logger.debug(
@@ -171,20 +180,25 @@ def create_samples(
     if method == SamplingMethod.CENTROIDS:
         for label in label_to_indexes.keys():
             indexes = label_to_indexes[label]
-            cluster_vectors = [vectors[i] for i in indexes]
+            if not indexes:
+                continue
+            cluster_vectors = np.array([vectors[i] for i in indexes])
             centroid = np.mean(cluster_vectors, axis=0)
-            distances = [np.linalg.norm(vector - centroid) for vector in cluster_vectors]
-            sorted_items = sorted(list(zip(distances, indexes)), key=lambda i: i[0], reverse=True)
-            label_to_indexes[label] = [p[1] for p in sorted_items]
+            distances = np.linalg.norm(cluster_vectors - centroid, axis=1)
+            sorted_idx = np.argsort(-distances)
+            label_to_indexes[label] = [indexes[i] for i in sorted_idx]
 
     results = {}
     added = 0
     total_items = len(labels)
+    used_indexes = set()
     while True:
+        added_this_round = False
         for label in label_to_indexes.keys():
             if added >= sample_size or added >= total_items:
                 return results
             indexes: List = label_to_indexes[label]
+            indexes = [idx for idx in indexes if idx not in used_indexes]
             if len(indexes) == 0:
                 continue
             if method == SamplingMethod.RANDOM:
@@ -194,7 +208,11 @@ def create_samples(
             else:
                 raise ValueError(f"Unexpected sampling method: {method}")
             results.setdefault(label, []).append(i)
+            used_indexes.add(i)
             added += 1
+            added_this_round = True
+        if added_this_round is False:
+            break  # no new samples were added in this round, break to avoid infinite loop
     return results
 
 
@@ -241,11 +259,12 @@ async def diverse_endpoint(request: Request):
     method = state.get("sampling_method", SamplingMethod.RANDOM)
     sample_size = state.get("sample_size")
     settings = state.get("settings", {})
+    settings["num_clusters"] = sample_size
     reduce = settings.get("reduce", False)
     reduction_method = settings.get("reduction_method", ReductionMethod.UMAP)
     default_dimensions = 3 if reduction_method == ReductionMethod.UMAP else 20
-    reduction_dimensions = settings.get("reduction_dimensions", default_dimensions) #! UMAP=3
-    clustering_method = settings.get("clustering_method", ClusteringMethod.DBSCAN)
+    reduction_dimensions = settings.get("reduction_dimensions", default_dimensions)  #! UMAP=3
+    clustering_method = settings.get("clustering_method", ClusteringMethod.KMEANS)
     labels = state.get("labels")
     vectors = state["vectors"]
     vectors = np.array(vectors)
