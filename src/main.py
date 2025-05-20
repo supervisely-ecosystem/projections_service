@@ -5,12 +5,21 @@ import numpy as np
 import sklearn.decomposition
 from sklearn.cluster import DBSCAN, MiniBatchKMeans
 from supervisely import Application, logger
+import supervisely as sly
 import umap
 from fastapi import Request
 
 from src.utils import timeit
 
+import os
+from dotenv import load_dotenv
 
+if sly.is_development():
+    # for debug
+    load_dotenv(os.path.expanduser("~/supervisely.env"))
+    task_id = sly.app.development.enable_advanced_debug(team_id=1)
+    if task_id:
+        logger.info(f"Debug Task ID: {task_id}")
 app = Application()
 server = app.get_server()
 
@@ -247,9 +256,10 @@ async def clusters_endpoint(request: Request):
 @timeit
 async def diverse_endpoint(request: Request):
     state = request.state.state
-    method = state.get("sampling_method", SamplingMethod.CENTROIDS)
+    method = state.get("sampling_method", SamplingMethod.RANDOM)
     sample_size = state.get("sample_size")
     settings = state.get("settings", {})
+    settings["num_clusters"] = sample_size
     reduce = settings.get("reduce", False)
     reduction_method = settings.get("reduction_method", ReductionMethod.UMAP)
     default_dimensions = 3 if reduction_method == ReductionMethod.UMAP else 20
