@@ -313,7 +313,7 @@ async def diverse_endpoint(request: Request):
     return samples
 
 
-async def stop_if_no_tasks_for_a_while():
+def stop_if_no_tasks_for_a_while():
     """
     Check if there are no in-progress tasks for a while, and stop the service if so.
     This function is scheduled to run periodically.
@@ -325,7 +325,7 @@ async def stop_if_no_tasks_for_a_while():
         current_time = perf_counter()
         if current_time - LAST_NO_TASKS_CHECK > STOP_SERVICE_INTERVAL:
             sly.logger.info("No in-progress tasks for a while, stopping the service...")
-            await app.stop()
+            app.stop()
         else:
             sly.logger.info(
                 "No in-progress tasks, but not enough time has passed since the last check. Waiting for more tasks..."
