@@ -313,26 +313,29 @@ async def diverse_endpoint(request: Request):
     return samples
 
 
-def stop_if_no_tasks_for_a_while():
+async def stop_if_no_tasks_for_a_while():
     """
     Check if there are no in-progress tasks for a while, and stop the service if so.
     This function is scheduled to run periodically.
     """
-    global LAST_NO_TASKS_CHECK
-    global IN_PROGRESS_TASKS
+    try:
+        global LAST_NO_TASKS_CHECK
+        global IN_PROGRESS_TASKS
 
-    if len(IN_PROGRESS_TASKS) == 0:
-        current_time = perf_counter()
-        if current_time - LAST_NO_TASKS_CHECK > STOP_SERVICE_INTERVAL:
-            sly.logger.info("No in-progress tasks for a while, stopping the service...")
-            app.stop()
+        if len(IN_PROGRESS_TASKS) == 0:
+            current_time = perf_counter()
+            if current_time - LAST_NO_TASKS_CHECK > STOP_SERVICE_INTERVAL:
+                sly.logger.info("No in-progress tasks for a while, stopping the service...")
+                app.stop()
+            else:
+                sly.logger.info(
+                    "No in-progress tasks, but not enough time has passed since the last check. Waiting for more tasks..."
+                )
         else:
-            sly.logger.info(
-                "No in-progress tasks, but not enough time has passed since the last check. Waiting for more tasks..."
-            )
-    else:
-        LAST_NO_TASKS_CHECK = perf_counter()
-        sly.logger.info(f"Found {len(IN_PROGRESS_TASKS)} in-progress tasks, resetting the timer.")
+            LAST_NO_TASKS_CHECK = perf_counter()
+            sly.logger.info(f"Found {len(IN_PROGRESS_TASKS)} in-progress tasks, resetting the timer.")
+    except Exception as e:
+        sly.logger.error(f"Error in stop_if_no_tasks_for_a_while: {str(e)}", exc_info=True)
 
 
 try:
