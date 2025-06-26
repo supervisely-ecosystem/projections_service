@@ -1,7 +1,8 @@
 import asyncio
 from functools import wraps
 from time import perf_counter
-from typing import Callable
+from typing import Callable, Set
+from uuid import uuid4
 
 import yaml
 
@@ -54,9 +55,8 @@ def timeit(func: Callable) -> Callable:
 
         return sync_wrapper
 
-def with_retries(
-    retries: int = 3, sleep_time: int = 1, on_failure: Callable = None
-) -> Callable:
+
+def with_retries(retries: int = 3, sleep_time: int = 1, on_failure: Callable = None) -> Callable:
     """Decorator to retry the function in case of an exception.
     Works only with async functions. Custom function can be executed on failure.
     NOTE: The on_failure function should be idempotent and synchronous.
@@ -79,16 +79,12 @@ def with_retries(
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
-                    logger.debug(
-                        f"Failed to execute {func.__name__}, retrying. Error: {str(e)}"
-                    )
+                    logger.debug(f"Failed to execute {func.__name__}, retrying. Error: {str(e)}")
                     await asyncio.sleep(sleep_time)
             if on_failure is not None:
                 return on_failure()
             else:
-                raise Exception(
-                    f"Failed to execute {func.__name__} after {retries} retries."
-                )
+                raise Exception(f"Failed to execute {func.__name__} after {retries} retries.")
 
         return async_function_with_retries
 
@@ -98,3 +94,41 @@ def with_retries(
 def read_yaml(path: str):
     with open(path, "r") as f:
         return yaml.safe_load(f)
+
+
+def track_in_progress_tasks(tasks: Set[str]) -> Callable:
+    """Decorator to add task ID to in_progress_tasks set and remove it after the function execution.
+
+    :param tasks: Set of in-progress task IDs.
+    :type tasks: Set[str]
+    :return: Decorator.
+    :rtype: Callable
+    """
+
+    def decorator(func):
+        if asyncio.iscoroutinefunction(func):
+
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                task_id = str(uuid4())
+                tasks.add(task_id)
+                try:
+                    return await func(*args, **kwargs)
+                finally:
+                    tasks.remove(task_id)
+
+            return async_wrapper
+        else:
+
+            @wraps(func)
+            def sync_wrapper(*args, **kwargs):
+                task_id = str(uuid4())
+                tasks.add(task_id)
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    tasks.remove(task_id)
+
+            return sync_wrapper
+
+    return decorator

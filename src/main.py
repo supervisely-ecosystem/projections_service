@@ -1,18 +1,20 @@
+import os
 import random
-from typing import Dict, List
+from time import perf_counter
+from typing import Callable, Dict, List, Set
+from uuid import uuid4
 
 import numpy as np
 import sklearn.decomposition
-from sklearn.cluster import DBSCAN, MiniBatchKMeans
-from supervisely import Application, logger
-import supervisely as sly
 import umap
-from fastapi import Request
-
-from src.utils import timeit
-
-import os
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
+from fastapi import Request
+from sklearn.cluster import DBSCAN, MiniBatchKMeans
+
+import supervisely as sly
+from src.utils import timeit, track_in_progress_tasks
+from supervisely import Application, logger
 
 if sly.is_development():
     # for debug
@@ -22,6 +24,12 @@ if sly.is_development():
         logger.info(f"Debug Task ID: {task_id}")
 app = Application()
 server = app.get_server()
+
+# global flags to prevent stop of the app while processing requests
+IN_PROGRESS_TASKS = set()  # type: Set[str]
+STOP_SERVICE_INTERVAL = int(os.getenv("STOP_SERVICE_INTERVAL", 60 * 2))  # 2 minutes by default
+CHECK_TASKS_INTERVAL = int(os.getenv("CHECK_TASKS_INTERVAL", 30))  # 30 seconds by default
+LAST_NO_TASKS_CHECK = perf_counter()  # last time when no tasks were found
 
 
 class ReductionMethod:
@@ -53,7 +61,8 @@ def reduce_dimensions(
     try:
         if projection_method == ReductionMethod.PCA:
             logger.debug(
-                "Reducing dimensions with PCA", extra={"n_components": dimensions, "vectors_shape": vectors.shape}
+                "Reducing dimensions with PCA",
+                extra={"n_components": dimensions, "vectors_shape": vectors.shape},
             )
             decomp = sklearn.decomposition.PCA(n_components=dimensions)
             projections = decomp.fit_transform(vectors)
@@ -94,7 +103,9 @@ def reduce_dimensions(
                     "vectors_shape": vectors.shape,
                 },
             )
-            decomp = sklearn.manifold.TSNE(n_components=dimensions, perplexity=perplexity, metric=metric, n_jobs=-1)
+            decomp = sklearn.manifold.TSNE(
+                n_components=dimensions, perplexity=perplexity, metric=metric, n_jobs=-1
+            )
             projections = decomp.fit_transform(vectors)
         elif projection_method == ReductionMethod.PCA_TSNE:
             perplexity = min(30, len(vectors) - 1)
@@ -109,7 +120,9 @@ def reduce_dimensions(
             )
             decomp = sklearn.decomposition.PCA(64)
             projections = decomp.fit_transform(vectors)
-            decomp = sklearn.manifold.TSNE(n_components=dimensions, perplexity=perplexity, metric=metric, n_jobs=-1)
+            decomp = sklearn.manifold.TSNE(
+                n_components=dimensions, perplexity=perplexity, metric=metric, n_jobs=-1
+            )
             projections = decomp.fit_transform(projections)
         else:
             raise ValueError(f"Unexpected reduction method: {projection_method}")
@@ -120,7 +133,9 @@ def reduce_dimensions(
 
 
 @timeit
-def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.KMEANS, settings: Dict = None) -> List[int]:
+def create_clusters(
+    vectors: np.ndarray, method: str = ClusteringMethod.KMEANS, settings: Dict = None
+) -> List[int]:
     """
     Returns a list of cluster labels for each embedding. -1 means no cluster
     """
@@ -160,7 +175,11 @@ def create_clusters(vectors: np.ndarray, method: str = ClusteringMethod.KMEANS, 
 
 @timeit
 def create_samples(
-    labels: List[int], vectors: np.ndarray, sample_size: int, method: str = "random", settings: Dict = None
+    labels: List[int],
+    vectors: np.ndarray,
+    sample_size: int,
+    method: str = "random",
+    settings: Dict = None,
 ) -> List[int]:
     if len(labels) != len(vectors):
         raise ValueError("Labels and vectors must have the same length")
@@ -169,7 +188,8 @@ def create_samples(
     if settings is None:
         settings = {}
     logger.debug(
-        "Creating diverse samples", extra={"sample_size": sample_size, "method": method, "vectors_shape": vectors.shape}
+        "Creating diverse samples",
+        extra={"sample_size": sample_size, "method": method, "vectors_shape": vectors.shape},
     )
     ignore_noise = settings.get("ignore_noise", False)
     label_to_indexes = {}
@@ -217,6 +237,7 @@ def create_samples(
 
 
 @server.post("/projections")
+@track_in_progress_tasks(IN_PROGRESS_TASKS)
 @timeit
 async def projections_endpoint(request: Request):
     state = request.state.state
@@ -231,6 +252,7 @@ async def projections_endpoint(request: Request):
 
 
 @server.post("/clusters")
+@track_in_progress_tasks(IN_PROGRESS_TASKS)
 @timeit
 async def clusters_endpoint(request: Request):
     state = request.state.state
@@ -253,6 +275,7 @@ async def clusters_endpoint(request: Request):
 
 
 @server.post("/diverse")
+@track_in_progress_tasks(IN_PROGRESS_TASKS)
 @timeit
 async def diverse_endpoint(request: Request):
     state = request.state.state
@@ -288,3 +311,51 @@ async def diverse_endpoint(request: Request):
         labels = create_clusters(vectors, clustering_method, settings)
     samples = create_samples(labels, vectors, sample_size, method, settings)
     return samples
+
+
+async def stop_if_no_tasks_for_a_while():
+    """
+    Check if there are no in-progress tasks for a while, and stop the service if so.
+    This function is scheduled to run periodically.
+    """
+    global LAST_NO_TASKS_CHECK
+    global IN_PROGRESS_TASKS
+
+    if len(IN_PROGRESS_TASKS) == 0:
+        current_time = perf_counter()
+        if current_time - LAST_NO_TASKS_CHECK > STOP_SERVICE_INTERVAL:
+            sly.logger.info("No in-progress tasks for a while, stopping the service...")
+            await app.stop()
+        else:
+            sly.logger.info(
+                "No in-progress tasks, but not enough time has passed since the last check. Waiting for more tasks..."
+            )
+    else:
+        LAST_NO_TASKS_CHECK = perf_counter()
+        sly.logger.info(f"Found {len(IN_PROGRESS_TASKS)} in-progress tasks, resetting the timer.")
+
+
+try:
+    scheduler = AsyncIOScheduler(
+        job_defaults={
+            "misfire_grace_time": 30,  # Allow jobs to run up to 30 seconds late if they miss their scheduled time
+        }
+    )
+
+    scheduler.add_job(
+        stop_if_no_tasks_for_a_while,
+        max_instances=1,
+        minutes=CHECK_TASKS_INTERVAL,
+    )
+
+    @server.on_event("startup")
+    def on_startup():
+        sly.logger.info("Starting scheduler...")
+        scheduler.start()
+        sly.logger.info("Scheduler started successfully")
+
+    app.call_before_shutdown(scheduler.shutdown)
+
+except Exception as e:
+    sly.logger.error(f"Error during initialization of the scheduler: {str(e)}")
+    raise
