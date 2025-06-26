@@ -346,7 +346,7 @@ try:
         stop_if_no_tasks_for_a_while,
         max_instances=1,
         trigger="interval",
-        minutes=CHECK_TASKS_INTERVAL,
+        sec=CHECK_TASKS_INTERVAL,
     )
 
     @server.on_event("startup")
