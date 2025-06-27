@@ -9,7 +9,7 @@
     "poster": "https://github.com/supervisely-ecosystem/projections_service/releases/download/v0.1.0/poster.jpg",
 	"docker_image": "supervisely/projections-service:1.0.2",
 	"port": 8000,
-	"categories": ["images", "metric learning", "statistics"],
+	"categories": ["images", "metric learning", "statistics", "ai search"],
 	"instance_version": "6.12.44",
 	"need_gpu": false,
 	"community_agent": false,
