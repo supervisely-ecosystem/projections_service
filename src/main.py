@@ -27,7 +27,7 @@ server = app.get_server()
 
 # global flags to prevent stop of the app while processing requests
 IN_PROGRESS_TASKS = set()  # type: Set[str]
-STOP_SERVICE_INTERVAL = int(os.getenv("STOP_SERVICE_INTERVAL", 60 * 2))  # 2 minutes by default
+STOP_SERVICE_INTERVAL = int(os.getenv("STOP_SERVICE_INTERVAL", 60 * 15))  # 15 minutes by default
 CHECK_TASKS_INTERVAL = int(os.getenv("CHECK_TASKS_INTERVAL", 30))  # 30 seconds by default
 LAST_NO_TASKS_CHECK = perf_counter()  # last time when no tasks were found
 
