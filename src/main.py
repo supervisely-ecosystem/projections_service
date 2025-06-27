@@ -240,6 +240,7 @@ def create_samples(
 @track_in_progress_tasks(IN_PROGRESS_TASKS)
 @timeit
 async def projections_endpoint(request: Request):
+    global LAST_NO_TASKS_CHECK
     state = request.state.state
     vectors = state["vectors"]
     method = state.get("method", ReductionMethod.UMAP)
@@ -248,13 +249,17 @@ async def projections_endpoint(request: Request):
     vectors = np.array(vectors)
     logger.info("Reducing dimensions with method %s", method)
     projections = reduce_dimensions(vectors, method, dimensions, settings)
-    return projections.tolist()
+    projections_list = projections.tolist()
+    LAST_NO_TASKS_CHECK = perf_counter()  # reset the timer when we have tasks
+    return projections_list
 
 
 @server.post("/clusters")
 @track_in_progress_tasks(IN_PROGRESS_TASKS)
 @timeit
 async def clusters_endpoint(request: Request):
+    global LAST_NO_TASKS_CHECK
+
     state = request.state.state
     method = state.get("method", ClusteringMethod.DBSCAN)
     reduce = state.get("reduce", False)
@@ -271,13 +276,18 @@ async def clusters_endpoint(request: Request):
     logger.info("Creating clusters with method %s", method, extra=extra)
     if reduce:
         vectors = reduce_dimensions(vectors, reduction_method, reduction_dimensions, settings)
-    return create_clusters(vectors, method, settings)
+
+    clusters = create_clusters(vectors, method, settings)
+    LAST_NO_TASKS_CHECK = perf_counter()  # reset the timer when we have tasks
+    return clusters
 
 
 @server.post("/diverse")
 @track_in_progress_tasks(IN_PROGRESS_TASKS)
 @timeit
 async def diverse_endpoint(request: Request):
+    global LAST_NO_TASKS_CHECK
+
     state = request.state.state
     method = state.get("sampling_method", SamplingMethod.RANDOM)
     sample_size = state.get("sample_size")
@@ -310,6 +320,8 @@ async def diverse_endpoint(request: Request):
             vectors = reduce_dimensions(vectors, reduction_method, reduction_dimensions, settings)
         labels = create_clusters(vectors, clustering_method, settings)
     samples = create_samples(labels, vectors, sample_size, method, settings)
+
+    LAST_NO_TASKS_CHECK = perf_counter()  # reset the timer when we have tasks
     return samples
 
 
