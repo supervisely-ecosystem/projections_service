@@ -6,11 +6,6 @@
 
 **High-performance microservice for dimensionality reduction, clustering, and diverse sampling of high-dimensional vector embeddings**
 
-<p align="center">
-  <a href="#Overview">Overview</a> •
-  <a href="#How-To-Run">How To Run</a> •
-  <a href="#Features">Features</a>
-</p>
 
 [![](https://img.shields.io/badge/supervisely-ecosystem-brightgreen)](https://ecosystem.supervisely.com/apps/supervisely-ecosystem/projections-service)
 [![](https://img.shields.io/badge/slack-chat-green.svg?logo=slack)](https://supervisely.com/slack)
@@ -22,13 +17,11 @@
 
 ## Overview
 
-🧩 This application is a core component of the **AI Search** feature in Supervisely and works in conjunction with the **Embeddings Generator** and **CLIP as Service** applications.
+🧩 This aplication is part of the **AI Search** feature in Supervisely. It is designed to be run automatically as a background microservice, so users do not need to run it manually. The service is automatically started when you access **Diverse** mode in the **AI Search** feature.
 
 **Projections Service** is a high-performance headless microservice that provides advanced dimensionality reduction, clustering, and diverse sampling capabilities for high-dimensional vector embeddings. The service enables efficient visualization and analysis of complex embedding spaces through state-of-the-art machine learning algorithms.
 
 The service operates as a background microservice and integrates seamlessly with the Supervisely ecosystem, providing RESTful API endpoints for creating 2D/3D projections, identifying clusters in embedding space, and selecting diverse representative samples from large datasets.
-
-> **Note**: This application is designed to be used in conjunction with the **Embeddings Generator** application, so you don't need to run it separately. It will be automatically started when you access the **AI Search** feature in Supervisely.
 
 ### Key Capabilities
 
